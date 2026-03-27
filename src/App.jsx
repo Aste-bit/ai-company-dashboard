@@ -201,7 +201,7 @@ function NodeGraph({ data, hoveredNode, setHoveredNode }) {
     if (!containerRef.current) return;
 
     const width = containerRef.current.offsetWidth;
-    const height = 500;
+    const height = 700;
     const deptNames = ['CTO', 'COO', 'CMO', 'CFO', 'CSO'];
 
     const positions = {
@@ -215,7 +215,7 @@ function NodeGraph({ data, hoveredNode, setHoveredNode }) {
       positions[dept] = { x: 60 + (idx + 1) * deptSpacing, y: 250 };
     });
 
-    // Position tasks below departments
+    // Position tasks below departments — multi-row grid for large groups
     const tasksPerDept = {
       CTO: ['cortex-autonomous'],
       COO: ['weekly-optimizer', 'todo-morning-picker', 'coconala-optimizer', 'skill-demand-analyzer', 'job-scanner', 'market-monitor', 'job-scanner-evening', 'proposal-tracker', 'knowledge-gardener', 'post-delivery'],
@@ -227,11 +227,19 @@ function NodeGraph({ data, hoveredNode, setHoveredNode }) {
 
     Object.entries(tasksPerDept).forEach(([dept, tasks]) => {
       const deptPos = positions[dept];
+      if (tasks.length === 0) return;
+      const maxPerRow = 5;
+      const colSpacing = 95;
+      const rowSpacing = 90;
+      const rows = Math.ceil(tasks.length / maxPerRow);
       tasks.forEach((taskId, idx) => {
-        const offset = (tasks.length - 1) * 25 / 2;
+        const row = Math.floor(idx / maxPerRow);
+        const col = idx % maxPerRow;
+        const colsInRow = row < rows - 1 ? maxPerRow : tasks.length - row * maxPerRow;
+        const rowOffset = (colsInRow - 1) * colSpacing / 2;
         positions[taskId] = {
-          x: deptPos.x - offset + idx * 25,
-          y: deptPos.y + 120,
+          x: deptPos.x - rowOffset + col * colSpacing,
+          y: deptPos.y + 120 + row * rowSpacing,
         };
       });
     });
@@ -708,7 +716,7 @@ const styles = {
   nodeGraphContainer: {
     position: 'relative',
     width: '100%',
-    height: '600px',
+    height: '700px',
     backgroundColor: '#fafbfc',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
@@ -730,8 +738,8 @@ const styles = {
     zIndex: 2,
   },
   nodeBox: {
-    width: '90px',
-    padding: '10px',
+    width: '85px',
+    padding: '8px',
     backgroundColor: '#f8fafc',
     borderRadius: '8px',
     border: '2px solid #e2e8f0',
