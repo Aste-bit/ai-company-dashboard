@@ -1,49 +1,71 @@
 /**
- * AI Company Dashboard API — Google Sheets中継方式
+ * AI Company Dashboard API — GitHub Gist中継方式
  *
- * GASがデータを収集し、Google Sheetに書き込む。
- * Sheetを「ウェブに公開」すれば、認証なしでダッシュボードからアクセス可能。
+ * GASがデータを収集し、GitHub Gistに書き込む。
+ * Gistの raw URL は認証なしでアクセス可能（CORS対応）。
  *
  * セットアップ手順:
- * 1. Addness GASプロジェクトでこのコードをコピペ
- * 2. FOLDER_ID を「仕事用」フォルダのIDに設定
- * 3. GASエディタで setup() を実行（Sheetと定期トリガーを自動作成）
- * 4. 作成されたSheetを開き「ファイル → 共有 → ウェブに公開」→ 公開
- * 5. Sheet IDをApp.jsxのSHEET_IDに設定
+ * 1. GitHub で Classic PAT を作成（gist スコープのみ）
+ *    → https://github.com/settings/tokens/new?scopes=gist
+ * 2. GASエディタで setupGist() を実行
+ *    → プロンプトで PAT を入力
+ *    → Gist が作成され、raw URL がログに表示される
+ * 3. ログの GIST_RAW_URL を App.jsx の DATA_URL に設定
  */
 
 // ====== 設定 ======
 const FOLDER_ID = '1FC80yoajsgjAn9EP74FgmZpf7388Q1rN'; // 「仕事用」フォルダのGoogle Drive ID
-const SHEET_NAME = 'AI-Dashboard-Data';
-const CACHE_TTL = 300; // キャッシュ秒数（5分）
+const GIST_FILENAME = 'dashboard.json';
 
 // ====== セットアップ（初回1回だけ実行） ======
-function setup() {
-  // 1. Sheetを作成
-  let ss;
-  const files = DriveApp.getFilesByName(SHEET_NAME);
-  if (files.hasNext()) {
-    ss = SpreadsheetApp.open(files.next());
-    Logger.log('既存Sheet使用: ' + ss.getUrl());
-  } else {
-    ss = SpreadsheetApp.create(SHEET_NAME);
-    Logger.log('新規Sheet作成: ' + ss.getUrl());
+function setupGist() {
+  // PAT を Script Properties に保存（初回はここに直接書いて実行、実行後に消す）
+  const TEMP_PAT = 'ここにPATを貼り付け'; // ← 実行後にこの行を消してください
+
+  let token = PropertiesService.getScriptProperties().getProperty('GITHUB_PAT');
+  if (!token) {
+    if (TEMP_PAT === 'ここにPATを貼り付け') {
+      Logger.log('エラー: TEMP_PAT にGitHub PATを設定してから実行してください');
+      return;
+    }
+    token = TEMP_PAT;
+    PropertiesService.getScriptProperties().setProperty('GITHUB_PAT', token);
+    Logger.log('PAT を Script Properties に保存しました（コードからTEMP_PATを消してOK）');
   }
 
-  // 2. シート準備
-  const sheet = ss.getSheets()[0];
-  sheet.setName('data');
-  sheet.getRange('A1').setValue('json');
-  sheet.getRange('B1').setValue('updated');
+  // Gist を作成
+  const data = collectAllData();
+  const response = UrlFetchApp.fetch('https://api.github.com/gists', {
+    method: 'post',
+    headers: {
+      'Authorization': 'token ' + token,
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'AI-Dashboard-GAS'
+    },
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      description: 'AI Company Dashboard Data (auto-updated)',
+      public: false,  // secret gist（URLを知ってる人はアクセス可）
+      files: {
+        [GIST_FILENAME]: {
+          content: JSON.stringify(data, null, 2)
+        }
+      }
+    })
+  });
 
-  // 3. 初回データ書き込み
-  writeDashboardData();
+  const gist = JSON.parse(response.getContentText());
+  const gistId = gist.id;
+  const rawUrl = gist.files[GIST_FILENAME].raw_url;
 
-  // 4. 5分おきの定期トリガー作成（既存があれば作成しない）
+  // Gist ID を保存
+  PropertiesService.getScriptProperties().setProperty('GIST_ID', gistId);
+
+  // 5分おきの定期トリガー作成
   const triggers = ScriptApp.getProjectTriggers();
-  const hasTimeTrigger = triggers.some(t => t.getHandlerFunction() === 'writeDashboardData');
+  const hasTimeTrigger = triggers.some(t => t.getHandlerFunction() === 'updateGist');
   if (!hasTimeTrigger) {
-    ScriptApp.newTrigger('writeDashboardData')
+    ScriptApp.newTrigger('updateGist')
       .timeBased()
       .everyMinutes(5)
       .create();
@@ -51,39 +73,41 @@ function setup() {
   }
 
   Logger.log('=== セットアップ完了 ===');
-  Logger.log('Sheet URL: ' + ss.getUrl());
-  Logger.log('Sheet ID: ' + ss.getId());
-  Logger.log('次のステップ: Sheetを開いて「ファイル → 共有 → ウェブに公開」→ 公開');
+  Logger.log('Gist ID: ' + gistId);
+  Logger.log('GIST_RAW_URL: ' + rawUrl);
+  Logger.log('↑ この raw URL を App.jsx の DATA_URL に設定してください');
 }
 
-// ====== データ書き込み（5分おきに自動実行） ======
-function writeDashboardData() {
-  const data = collectAllData();
-  const json = JSON.stringify(data);
+// ====== Gist更新（5分おきに自動実行） ======
+function updateGist() {
+  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_PAT');
+  const gistId = PropertiesService.getScriptProperties().getProperty('GIST_ID');
 
-  // Sheetを見つけて書き込み
-  const files = DriveApp.getFilesByName(SHEET_NAME);
-  if (!files.hasNext()) {
-    Logger.log('Error: Sheet "' + SHEET_NAME + '" が見つかりません。setup() を実行してください。');
+  if (!token || !gistId) {
+    Logger.log('Error: setupGist() を先に実行してください');
     return;
   }
-  const ss = SpreadsheetApp.open(files.next());
-  const sheet = ss.getSheets()[0];
-  sheet.getRange('A2').setValue(json);
-  sheet.getRange('B2').setValue(new Date().toISOString());
-}
 
-// ====== 従来のWeb App（オプション、テスト用） ======
-function doGet(e) {
-  const output = ContentService.createTextOutput();
-  output.setMimeType(ContentService.MimeType.JSON);
-  try {
-    const data = collectAllData();
-    output.setContent(JSON.stringify(data));
-  } catch (err) {
-    output.setContent(JSON.stringify({ error: err.message }));
-  }
-  return output;
+  const data = collectAllData();
+
+  UrlFetchApp.fetch('https://api.github.com/gists/' + gistId, {
+    method: 'patch',
+    headers: {
+      'Authorization': 'token ' + token,
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'AI-Dashboard-GAS'
+    },
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      files: {
+        [GIST_FILENAME]: {
+          content: JSON.stringify(data, null, 2)
+        }
+      }
+    })
+  });
+
+  Logger.log('Gist更新完了: ' + new Date().toISOString());
 }
 
 // ====== データ収集 ======

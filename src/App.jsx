@@ -3,9 +3,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-const SHEET_ID = '1xJkiGKZ4cI99auvxHu7oGwCrrg_jR4Ty5wO99eXgQvw';
-const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=0&single=true&output=csv`;
-const USE_MOCK_DATA = SHEET_ID === 'YOUR_SHEET_ID'; // Sheet ID設定前はモックデータ
+const GIST_RAW_URL = 'https://gist.githubusercontent.com/Aste-bit/3ffdf3291246f31636ab155f71755488/raw/dashboard.json';
+const USE_MOCK_DATA = GIST_RAW_URL === 'YOUR_GIST_RAW_URL';
 
 // ============================================================================
 // MOCK DATA
@@ -68,27 +67,17 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Load data from published Google Sheet (no auth required)
+  // Load data from GitHub Gist (no auth required)
   useEffect(() => {
     if (USE_MOCK_DATA) return;
     const DEPT_COLORS = { CEO: '#f59e0b', CTO: '#2563eb', COO: '#16a34a', CMO: '#ec4899', CFO: '#d97706', CSO: '#7c3aed' };
 
-    fetch(SHEET_URL)
-      .then(res => res.text())
-      .then(csv => {
-        // pub CSV format: row1=header, row2=data. Extract JSON from first column of row2
-        const lines = csv.split('\n');
-        const dataLine = lines.length > 1 ? lines[1] : lines[0];
-        // Cell may be wrapped in quotes with escaped double-quotes inside
-        let jsonStr = dataLine;
-        // Remove surrounding quotes and unescape
-        if (jsonStr.startsWith('"')) {
-          // Find the closing quote for the first CSV column (handles commas inside JSON)
-          const match = jsonStr.match(/^"((?:[^"]|"")*?)"/);
-          jsonStr = match ? match[1].replace(/""/g, '"') : jsonStr.replace(/^"/, '').replace(/"$/, '').replace(/""/g, '"');
-        }
-        jsonStr = jsonStr.trim();
-        const apiData = JSON.parse(jsonStr);
+    fetch(GIST_RAW_URL + '?t=' + Date.now())
+      .then(res => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(apiData => {
         // Ensure CEO department exists
         if (apiData.departments && !apiData.departments.CEO) {
           apiData.departments.CEO = { health: 'green', lastUpdate: new Date().toISOString(), metrics: { briefs: 1, status: 'On' } };
@@ -111,7 +100,7 @@ export default function App() {
         setData(apiData);
       })
       .catch(err => {
-        console.error('Sheet fetch failed, using mock data:', err);
+        console.error('Gist fetch failed, using mock data:', err);
         setData(MOCK_DATA);
       });
   }, []);
