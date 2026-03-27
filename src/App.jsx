@@ -201,21 +201,8 @@ function NodeGraph({ data, hoveredNode, setHoveredNode }) {
     if (!containerRef.current) return;
 
     const width = containerRef.current.offsetWidth;
-    const height = 700;
     const deptNames = ['CTO', 'COO', 'CMO', 'CFO', 'CSO'];
 
-    const positions = {
-      CEO: { x: width / 2, y: 80 },
-      Chairman: { x: width / 2, y: 0 },
-    };
-
-    // Position departments in a line below CEO
-    const deptSpacing = (width - 100) / (deptNames.length + 1);
-    deptNames.forEach((dept, idx) => {
-      positions[dept] = { x: 60 + (idx + 1) * deptSpacing, y: 250 };
-    });
-
-    // Position tasks below departments — multi-row grid for large groups
     const tasksPerDept = {
       CTO: ['cortex-autonomous'],
       COO: ['weekly-optimizer', 'todo-morning-picker', 'coconala-optimizer', 'skill-demand-analyzer', 'job-scanner', 'market-monitor', 'job-scanner-evening', 'proposal-tracker', 'knowledge-gardener', 'post-delivery'],
@@ -225,12 +212,39 @@ function NodeGraph({ data, hoveredNode, setHoveredNode }) {
       CEO: ['ceo-briefing'],
     };
 
+    // Weight-based department positioning — more tasks = more space
+    const maxPerRow = 5;
+    const colSpacing = 100;
+    const deptWidths = deptNames.map(d => {
+      const count = (tasksPerDept[d] || []).length;
+      const cols = Math.min(count || 1, maxPerRow);
+      return cols * colSpacing;
+    });
+    const totalWidth = deptWidths.reduce((a, b) => a + b, 0);
+    const margin = 60;
+    const scale = (width - margin * 2) / totalWidth;
+    let cursorX = margin;
+    const deptCenters = {};
+    deptNames.forEach((dept, idx) => {
+      const w = deptWidths[idx] * scale;
+      deptCenters[dept] = cursorX + w / 2;
+      cursorX += w;
+    });
+
+    const positions = {
+      CEO: { x: width / 2, y: 80 },
+      Chairman: { x: width / 2, y: 0 },
+    };
+
+    deptNames.forEach(dept => {
+      positions[dept] = { x: deptCenters[dept], y: 250 };
+    });
+
+    // Position tasks — multi-row grid, centered under department
+    const rowSpacing = 85;
     Object.entries(tasksPerDept).forEach(([dept, tasks]) => {
       const deptPos = positions[dept];
-      if (tasks.length === 0) return;
-      const maxPerRow = 5;
-      const colSpacing = 95;
-      const rowSpacing = 90;
+      if (!deptPos || tasks.length === 0) return;
       const rows = Math.ceil(tasks.length / maxPerRow);
       tasks.forEach((taskId, idx) => {
         const row = Math.floor(idx / maxPerRow);
@@ -716,7 +730,7 @@ const styles = {
   nodeGraphContainer: {
     position: 'relative',
     width: '100%',
-    height: '700px',
+    height: '750px',
     backgroundColor: '#fafbfc',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
