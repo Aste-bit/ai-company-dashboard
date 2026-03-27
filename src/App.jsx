@@ -253,7 +253,7 @@ function NodeGraph({ data, hoveredNode, setHoveredNode }) {
         const rowOffset = (colsInRow - 1) * colSpacing / 2;
         positions[taskId] = {
           x: deptPos.x - rowOffset + col * colSpacing,
-          y: deptPos.y + 120 + row * rowSpacing,
+          y: deptPos.y + 190 + row * rowSpacing,
         };
       });
     });
@@ -730,7 +730,7 @@ const styles = {
   nodeGraphContainer: {
     position: 'relative',
     width: '100%',
-    height: '750px',
+    height: '850px',
     backgroundColor: '#fafbfc',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
