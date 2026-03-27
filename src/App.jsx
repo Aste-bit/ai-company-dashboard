@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-const SHEET_ID = 'YOUR_SHEET_ID'; // setup()実行後にSheetのIDを設定
+const SHEET_ID = '1xJkiGKZ4cI99auvxHu7oGwCrrg_jR4Ty5wO99eXgQvw';
 const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=data&range=A2`;
 const USE_MOCK_DATA = SHEET_ID === 'YOUR_SHEET_ID'; // Sheet ID設定前はモックデータ
 
