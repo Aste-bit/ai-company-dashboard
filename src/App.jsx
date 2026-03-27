@@ -214,10 +214,10 @@ function NodeGraph({ data, hoveredNode, setHoveredNode }) {
     };
 
     // ── Layout constants ──
-    const chairmanY = 40;
-    const ceoY = 120;
-    const deptY = 260;
-    const taskY = 420;  // single row, enough gap for visible lines
+    const chairmanY = 70;
+    const ceoY = 150;
+    const deptY = 290;
+    const taskY = 450;  // single row, enough gap for visible lines
 
     // ── Weight-based horizontal positioning ──
     // Each dept gets width proportional to max(taskCount, 1)
@@ -449,7 +449,10 @@ function NodeBox({ name, subtitle, pos, health, icon, isChairman, isTask, color,
         </div>
 
         {isHovered && details && (
-          <div style={styles.nodePopup}>
+          <div style={{
+            ...styles.nodePopup,
+            ...(isTask ? { top: 'auto', bottom: '100%', marginTop: 0, marginBottom: '8px' } : {}),
+          }}>
             <div style={{ fontSize: '12px', fontWeight: '500', marginBottom: '4px' }}>詳細</div>
             {Object.entries(details).map(([key, val]) => (
               <div key={key} style={{ fontSize: '11px', color: '#666', marginBottom: '2px' }}>
@@ -729,7 +732,7 @@ const styles = {
   nodeGraphContainer: {
     position: 'relative',
     width: '100%',
-    height: '560px',
+    height: '600px',
     backgroundColor: '#fafbfc',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
