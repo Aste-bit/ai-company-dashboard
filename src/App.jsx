@@ -3,8 +3,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-const API_URL = 'https://script.google.com/macros/d/YOUR_SCRIPT_ID/useweb?action=getData';
-const USE_MOCK_DATA = true; // Set to false when GAS API is ready
+const API_URL = 'https://script.google.com/a/macros/team.addness.co.jp/s/AKfycbxIA_A0aTNOQWttmPE0Pzk6IdX6V5b4NhfvyFq6uVMdJXLBtpe-l0W2Mkd7_GbU4fvysg/exec';
+const USE_MOCK_DATA = false; // GAS API confirmed working (2026-03-27)
 
 // ============================================================================
 // MOCK DATA
@@ -67,17 +67,51 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Load data from GAS API if configured
+  // Load data from GAS API via JSONP (CORS bypass)
   useEffect(() => {
-    if (!USE_MOCK_DATA && API_URL !== 'https://script.google.com/macros/d/YOUR_SCRIPT_ID/useweb?action=getData') {
-      fetch(API_URL)
-        .then(res => res.json())
-        .then(apiData => setData(apiData))
-        .catch(err => {
-          console.error('Failed to load data:', err);
-          setData(MOCK_DATA);
+    if (USE_MOCK_DATA) return;
+    const callbackName = '_aiDashCallback_' + Date.now();
+    const DEPT_COLORS = { CEO: '#f59e0b', CTO: '#2563eb', COO: '#16a34a', CMO: '#ec4899', CFO: '#d97706', CSO: '#7c3aed' };
+    window[callbackName] = (apiData) => {
+      // Merge department colors (GAS API doesn't include them)
+      if (apiData.departments) {
+        Object.keys(apiData.departments).forEach(d => {
+          apiData.departments[d].color = DEPT_COLORS[d] || '#999';
         });
-    }
+      }
+      // Ensure kpi defaults
+      if (apiData.kpi) {
+        apiData.kpi.activeTasks = apiData.kpi.activeTasks || 0;
+        apiData.kpi.totalTasks = apiData.kpi.totalTasks || 0;
+        apiData.kpi.revenue = apiData.kpi.revenue || 0;
+        apiData.kpi.revenueTarget = apiData.kpi.revenueTarget || 50000;
+        apiData.kpi.pipeline = apiData.kpi.pipeline || 0;
+        apiData.kpi.alerts = (apiData.alerts || []).length;
+      }
+      setData(apiData);
+      delete window[callbackName];
+      document.getElementById(callbackName)?.remove();
+    };
+    const script = document.createElement('script');
+    script.id = callbackName;
+    script.src = API_URL + '?callback=' + callbackName;
+    script.onerror = () => {
+      console.error('GAS API failed, falling back to mock data');
+      setData(MOCK_DATA);
+      delete window[callbackName];
+      script.remove();
+    };
+    document.body.appendChild(script);
+    // Timeout fallback (10s)
+    const timeout = setTimeout(() => {
+      if (window[callbackName]) {
+        console.warn('GAS API timeout, using mock data');
+        setData(MOCK_DATA);
+        delete window[callbackName];
+        script.remove();
+      }
+    }, 10000);
+    return () => clearTimeout(timeout);
   }, []);
 
   const formatTime = (date) => {
