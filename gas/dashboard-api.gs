@@ -17,29 +17,42 @@ const CACHE_TTL = 300; // キャッシュ秒数（5分）
 
 // ====== メイン ======
 function doGet(e) {
+  // postMessageモード: iframe経由でダッシュボードにデータを送る（Workspace認証対応）
+  if (e?.parameter?.mode === 'postmessage') {
+    try {
+      const cache = CacheService.getScriptCache();
+      let json = cache.get('dashboard_data');
+      if (!json) {
+        const data = collectAllData();
+        json = JSON.stringify(data);
+        cache.put('dashboard_data', json, CACHE_TTL);
+      }
+      const html = '<html><body><script>'
+        + 'window.parent.postMessage({type:"ai-dashboard-data",payload:' + json + '}, "*");'
+        + '<\/script></body></html>';
+      return HtmlService.createHtmlOutput(html)
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } catch (err) {
+      const html = '<html><body><script>'
+        + 'window.parent.postMessage({type:"ai-dashboard-error",error:"' + err.message.replace(/"/g, '\\"') + '"}, "*");'
+        + '<\/script></body></html>';
+      return HtmlService.createHtmlOutput(html)
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    }
+  }
+
+  // 通常のJSON/JSONPモード
   const output = ContentService.createTextOutput();
   output.setMimeType(ContentService.MimeType.JSON);
 
   try {
     const cache = CacheService.getScriptCache();
-    const cached = cache.get('dashboard_data');
-
-    if (cached) {
-      // JSONP対応（CORSバイパス）
-      const callback = e?.parameter?.callback;
-      if (callback) {
-        output.setMimeType(ContentService.MimeType.JAVASCRIPT);
-        output.setContent(callback + '(' + cached + ')');
-      } else {
-        output.setContent(cached);
-      }
-      return output;
+    let json = cache.get('dashboard_data');
+    if (!json) {
+      const data = collectAllData();
+      json = JSON.stringify(data);
+      cache.put('dashboard_data', json, CACHE_TTL);
     }
-
-    const data = collectAllData();
-    const json = JSON.stringify(data);
-
-    cache.put('dashboard_data', json, CACHE_TTL);
 
     const callback = e?.parameter?.callback;
     if (callback) {

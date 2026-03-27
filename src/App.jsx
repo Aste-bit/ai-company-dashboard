@@ -67,17 +67,22 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Load data from GAS API via JSONP (CORS bypass)
+  // Load data from GAS API via iframe + postMessage (Workspace auth compatible)
   useEffect(() => {
     if (USE_MOCK_DATA) return;
-    const callbackName = '_aiDashCallback_' + Date.now();
     const DEPT_COLORS = { CEO: '#f59e0b', CTO: '#2563eb', COO: '#16a34a', CMO: '#ec4899', CFO: '#d97706', CSO: '#7c3aed' };
-    window[callbackName] = (apiData) => {
+    let loaded = false;
+
+    const handleMessage = (event) => {
+      // Accept messages from Google's script hosting domains
+      if (!event.data || event.data.type !== 'ai-dashboard-data') return;
+      loaded = true;
+      const apiData = event.data.payload;
       // Ensure CEO department exists (GAS API only returns CTO/COO/CMO/CFO/CSO)
       if (apiData.departments && !apiData.departments.CEO) {
         apiData.departments.CEO = { health: 'green', lastUpdate: new Date().toISOString(), metrics: { briefs: 1, status: 'On' } };
       }
-      // Merge department colors (GAS API doesn't include them)
+      // Merge department colors
       if (apiData.departments) {
         Object.keys(apiData.departments).forEach(d => {
           apiData.departments[d].color = DEPT_COLORS[d] || '#999';
@@ -93,29 +98,30 @@ export default function App() {
         apiData.kpi.alerts = (apiData.alerts || []).length;
       }
       setData(apiData);
-      delete window[callbackName];
-      document.getElementById(callbackName)?.remove();
+      iframe.remove();
     };
-    const script = document.createElement('script');
-    script.id = callbackName;
-    script.src = API_URL + '?callback=' + callbackName;
-    script.onerror = () => {
-      console.error('GAS API failed, falling back to mock data');
-      setData(MOCK_DATA);
-      delete window[callbackName];
-      script.remove();
-    };
-    document.body.appendChild(script);
-    // Timeout fallback (10s)
+
+    window.addEventListener('message', handleMessage);
+
+    // Create hidden iframe to load GAS with user's Google auth cookies
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = API_URL + '?mode=postmessage';
+    document.body.appendChild(iframe);
+
+    // Timeout fallback (15s)
     const timeout = setTimeout(() => {
-      if (window[callbackName]) {
+      if (!loaded) {
         console.warn('GAS API timeout, using mock data');
         setData(MOCK_DATA);
-        delete window[callbackName];
-        script.remove();
+        iframe.remove();
       }
-    }, 10000);
-    return () => clearTimeout(timeout);
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      clearTimeout(timeout);
+    };
   }, []);
 
   const formatTime = (date) => {
