@@ -3,8 +3,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-const API_URL = 'https://script.google.com/a/macros/team.addness.co.jp/s/AKfycbxIA_A0aTNOQWttmPE0Pzk6IdX6V5b4NhfvyFq6uVMdJXLBtpe-l0W2Mkd7_GbU4fvysg/exec';
-const USE_MOCK_DATA = false; // GAS API confirmed working (2026-03-27)
+const SHEET_ID = 'YOUR_SHEET_ID'; // setup()実行後にSheetのIDを設定
+const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=data&range=A2`;
+const USE_MOCK_DATA = SHEET_ID === 'YOUR_SHEET_ID'; // Sheet ID設定前はモックデータ
 
 // ============================================================================
 // MOCK DATA
@@ -67,61 +68,42 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Load data from GAS API via iframe + postMessage (Workspace auth compatible)
+  // Load data from published Google Sheet (no auth required)
   useEffect(() => {
     if (USE_MOCK_DATA) return;
     const DEPT_COLORS = { CEO: '#f59e0b', CTO: '#2563eb', COO: '#16a34a', CMO: '#ec4899', CFO: '#d97706', CSO: '#7c3aed' };
-    let loaded = false;
 
-    const handleMessage = (event) => {
-      // Accept messages from Google's script hosting domains
-      if (!event.data || event.data.type !== 'ai-dashboard-data') return;
-      loaded = true;
-      const apiData = event.data.payload;
-      // Ensure CEO department exists (GAS API only returns CTO/COO/CMO/CFO/CSO)
-      if (apiData.departments && !apiData.departments.CEO) {
-        apiData.departments.CEO = { health: 'green', lastUpdate: new Date().toISOString(), metrics: { briefs: 1, status: 'On' } };
-      }
-      // Merge department colors
-      if (apiData.departments) {
-        Object.keys(apiData.departments).forEach(d => {
-          apiData.departments[d].color = DEPT_COLORS[d] || '#999';
-        });
-      }
-      // Ensure kpi defaults
-      if (apiData.kpi) {
-        apiData.kpi.activeTasks = apiData.kpi.activeTasks || 0;
-        apiData.kpi.totalTasks = apiData.kpi.totalTasks || 0;
-        apiData.kpi.revenue = apiData.kpi.revenue || 0;
-        apiData.kpi.revenueTarget = apiData.kpi.revenueTarget || 50000;
-        apiData.kpi.pipeline = apiData.kpi.pipeline || 0;
-        apiData.kpi.alerts = (apiData.alerts || []).length;
-      }
-      setData(apiData);
-      iframe.remove();
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    // Create hidden iframe to load GAS with user's Google auth cookies
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = API_URL + '?mode=postmessage';
-    document.body.appendChild(iframe);
-
-    // Timeout fallback (15s)
-    const timeout = setTimeout(() => {
-      if (!loaded) {
-        console.warn('GAS API timeout, using mock data');
+    fetch(SHEET_URL)
+      .then(res => res.text())
+      .then(csv => {
+        // CSV cell is wrapped in quotes: "{ json... }"
+        const jsonStr = csv.replace(/^"/, '').replace(/"$/, '').replace(/""/g, '"').trim();
+        const apiData = JSON.parse(jsonStr);
+        // Ensure CEO department exists
+        if (apiData.departments && !apiData.departments.CEO) {
+          apiData.departments.CEO = { health: 'green', lastUpdate: new Date().toISOString(), metrics: { briefs: 1, status: 'On' } };
+        }
+        // Merge department colors
+        if (apiData.departments) {
+          Object.keys(apiData.departments).forEach(d => {
+            apiData.departments[d].color = DEPT_COLORS[d] || '#999';
+          });
+        }
+        // Ensure kpi defaults
+        if (apiData.kpi) {
+          apiData.kpi.activeTasks = apiData.kpi.activeTasks || 0;
+          apiData.kpi.totalTasks = apiData.kpi.totalTasks || 0;
+          apiData.kpi.revenue = apiData.kpi.revenue || 0;
+          apiData.kpi.revenueTarget = apiData.kpi.revenueTarget || 50000;
+          apiData.kpi.pipeline = apiData.kpi.pipeline || 0;
+          apiData.kpi.alerts = (apiData.alerts || []).length;
+        }
+        setData(apiData);
+      })
+      .catch(err => {
+        console.error('Sheet fetch failed, using mock data:', err);
         setData(MOCK_DATA);
-        iframe.remove();
-      }
-    }, 15000);
-
-    return () => {
-      window.removeEventListener('message', handleMessage);
-      clearTimeout(timeout);
-    };
+      });
   }, []);
 
   const formatTime = (date) => {
