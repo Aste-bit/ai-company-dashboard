@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 // CONFIGURATION
 // ============================================================================
 const SHEET_ID = '1xJkiGKZ4cI99auvxHu7oGwCrrg_jR4Ty5wO99eXgQvw';
-const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=data&range=A2`;
+const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=0&single=true&output=csv`;
 const USE_MOCK_DATA = SHEET_ID === 'YOUR_SHEET_ID'; // Sheet ID設定前はモックデータ
 
 // ============================================================================
@@ -76,8 +76,18 @@ export default function App() {
     fetch(SHEET_URL)
       .then(res => res.text())
       .then(csv => {
-        // CSV cell is wrapped in quotes: "{ json... }"
-        const jsonStr = csv.replace(/^"/, '').replace(/"$/, '').replace(/""/g, '"').trim();
+        // pub CSV format: row1=header, row2=data. Extract JSON from first column of row2
+        const lines = csv.split('\n');
+        const dataLine = lines.length > 1 ? lines[1] : lines[0];
+        // Cell may be wrapped in quotes with escaped double-quotes inside
+        let jsonStr = dataLine;
+        // Remove surrounding quotes and unescape
+        if (jsonStr.startsWith('"')) {
+          // Find the closing quote for the first CSV column (handles commas inside JSON)
+          const match = jsonStr.match(/^"((?:[^"]|"")*?)"/);
+          jsonStr = match ? match[1].replace(/""/g, '"') : jsonStr.replace(/^"/, '').replace(/"$/, '').replace(/""/g, '"');
+        }
+        jsonStr = jsonStr.trim();
         const apiData = JSON.parse(jsonStr);
         // Ensure CEO department exists
         if (apiData.departments && !apiData.departments.CEO) {
