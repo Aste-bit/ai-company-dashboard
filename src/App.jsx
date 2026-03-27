@@ -203,6 +203,7 @@ function NodeGraph({ data, hoveredNode, setHoveredNode }) {
     const width = containerRef.current.offsetWidth;
     const deptNames = ['CTO', 'COO', 'CMO', 'CFO', 'CSO'];
 
+    // Tasks per department (CEO Briefing grouped under CEO, not as separate column)
     const tasksPerDept = {
       CTO: ['cortex-autonomous'],
       COO: ['weekly-optimizer', 'todo-morning-picker', 'coconala-optimizer', 'skill-demand-analyzer', 'job-scanner', 'market-monitor', 'job-scanner-evening', 'proposal-tracker', 'knowledge-gardener', 'post-delivery'],
@@ -212,48 +213,46 @@ function NodeGraph({ data, hoveredNode, setHoveredNode }) {
       CEO: ['ceo-briefing'],
     };
 
-    // Weight-based department positioning — more tasks = more space
-    const maxPerRow = 5;
-    const colSpacing = 100;
-    const deptWidths = deptNames.map(d => {
-      const count = (tasksPerDept[d] || []).length;
-      const cols = Math.min(count || 1, maxPerRow);
-      return cols * colSpacing;
-    });
-    const totalWidth = deptWidths.reduce((a, b) => a + b, 0);
-    const margin = 60;
-    const scale = (width - margin * 2) / totalWidth;
-    let cursorX = margin;
+    // ── Layout constants ──
+    const chairmanY = 40;
+    const ceoY = 120;
+    const deptY = 260;
+    const taskY = 420;  // single row, enough gap for visible lines
+
+    // ── Weight-based horizontal positioning ──
+    // Each dept gets width proportional to max(taskCount, 1)
+    const taskSpacing = 75; // px between task centers
+    const deptWeights = deptNames.map(d => Math.max((tasksPerDept[d] || []).length, 1));
+    const totalWeight = deptWeights.reduce((a, b) => a + b, 0);
+    const margin = 50;
+    const usable = width - margin * 2;
+    let cursor = margin;
     const deptCenters = {};
     deptNames.forEach((dept, idx) => {
-      const w = deptWidths[idx] * scale;
-      deptCenters[dept] = cursorX + w / 2;
-      cursorX += w;
+      const w = (deptWeights[idx] / totalWeight) * usable;
+      deptCenters[dept] = cursor + w / 2;
+      cursor += w;
     });
 
     const positions = {
-      CEO: { x: width / 2, y: 80 },
-      Chairman: { x: width / 2, y: 0 },
+      Chairman: { x: width / 2, y: chairmanY },
+      CEO: { x: width / 2, y: ceoY },
     };
 
     deptNames.forEach(dept => {
-      positions[dept] = { x: deptCenters[dept], y: 250 };
+      positions[dept] = { x: deptCenters[dept], y: deptY };
     });
 
-    // Position tasks — multi-row grid, centered under department
-    const rowSpacing = 85;
+    // ── Position tasks — ALL in a single row under their department ──
     Object.entries(tasksPerDept).forEach(([dept, tasks]) => {
       const deptPos = positions[dept];
       if (!deptPos || tasks.length === 0) return;
-      const rows = Math.ceil(tasks.length / maxPerRow);
+      const totalSpan = (tasks.length - 1) * taskSpacing;
+      const startX = deptPos.x - totalSpan / 2;
       tasks.forEach((taskId, idx) => {
-        const row = Math.floor(idx / maxPerRow);
-        const col = idx % maxPerRow;
-        const colsInRow = row < rows - 1 ? maxPerRow : tasks.length - row * maxPerRow;
-        const rowOffset = (colsInRow - 1) * colSpacing / 2;
         positions[taskId] = {
-          x: deptPos.x - rowOffset + col * colSpacing,
-          y: deptPos.y + 190 + row * rowSpacing,
+          x: startX + idx * taskSpacing,
+          y: taskY,
         };
       });
     });
@@ -730,7 +729,7 @@ const styles = {
   nodeGraphContainer: {
     position: 'relative',
     width: '100%',
-    height: '850px',
+    height: '560px',
     backgroundColor: '#fafbfc',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
@@ -752,8 +751,8 @@ const styles = {
     zIndex: 2,
   },
   nodeBox: {
-    width: '85px',
-    padding: '8px',
+    width: '72px',
+    padding: '6px 4px',
     backgroundColor: '#f8fafc',
     borderRadius: '8px',
     border: '2px solid #e2e8f0',
@@ -762,11 +761,11 @@ const styles = {
     transition: 'all 0.2s ease',
   },
   nodeIcon: {
-    fontSize: '24px',
-    marginBottom: '4px',
+    fontSize: '20px',
+    marginBottom: '2px',
   },
   nodeName: {
-    fontSize: '13px',
+    fontSize: '11px',
     fontWeight: '600',
     color: '#000',
     marginBottom: '2px',
