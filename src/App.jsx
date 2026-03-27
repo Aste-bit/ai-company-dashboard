@@ -73,6 +73,10 @@ export default function App() {
     const callbackName = '_aiDashCallback_' + Date.now();
     const DEPT_COLORS = { CEO: '#f59e0b', CTO: '#2563eb', COO: '#16a34a', CMO: '#ec4899', CFO: '#d97706', CSO: '#7c3aed' };
     window[callbackName] = (apiData) => {
+      // Ensure CEO department exists (GAS API only returns CTO/COO/CMO/CFO/CSO)
+      if (apiData.departments && !apiData.departments.CEO) {
+        apiData.departments.CEO = { health: 'green', lastUpdate: new Date().toISOString(), metrics: { briefs: 1, status: 'On' } };
+      }
       // Merge department colors (GAS API doesn't include them)
       if (apiData.departments) {
         Object.keys(apiData.departments).forEach(d => {
@@ -142,7 +146,7 @@ export default function App() {
           <div style={styles.headerRight}>
             <div style={styles.clock}>{formatTime(currentTime)}</div>
             <div style={styles.systemHealth}>
-              {getHealthBadge(data.departments.CEO.health)}
+              {getHealthBadge(data.departments.CEO?.health || 'green')}
             </div>
           </div>
         </div>
